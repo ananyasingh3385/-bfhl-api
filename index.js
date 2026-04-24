@@ -132,5 +132,10 @@ app.post('/bfhl', (req, res) => {
     summary: { total_trees: nonCyclic.length, total_cycles: cyclic.length, largest_tree_root }
   });
 });
+const PORT = process.env.PORT || 3000;
 
-app.listen(3000, () => console.log('API running on http://localhost:3000'));
+app.listen(PORT, () => {
+  console.log(`API running on port ${PORT}`);
+});
+
+
