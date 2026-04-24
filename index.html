@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>BFHL Node Explorer</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0d0d0f; color: #e8e8f0; font-family: 'Courier New', monospace; }
+    .main { max-width: 900px; margin: 0 auto; padding: 40px 20px; }
+    h1 { font-size: 2rem; background: linear-gradient(135deg, #7c6af7, #4ecca3);
+         -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 6px; }
+    .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 30px; }
+    .card { background: #16161a; border: 1px solid #2a2a35; border-radius: 12px; padding: 22px; margin-bottom: 18px; }
+    label { font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 8px; }
+    textarea { width: 100%; background: #0d0d0f; border: 1px solid #2a2a35; border-radius: 8px;
+               color: #e8e8f0; font-family: 'Courier New', monospace; font-size: 0.9rem; padding: 12px;
+               resize: vertical; outline: none; }
+    textarea:focus { border-color: #7c6af7; }
+    button { margin-top: 14px; background: #7c6af7; color: #fff; border: none; border-radius: 8px;
+             padding: 10px 28px; font-size: 0.95rem; font-family: 'Courier New', monospace; cursor: pointer; }
+    button:hover { opacity: 0.85; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .error { background: #2a1010; border: 1px solid #f76a6a; color: #f76a6a;
+             border-radius: 8px; padding: 14px; margin-bottom: 18px; }
+    .card-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1.5px;
+                  color: #7c6af7; margin-bottom: 14px; }
+    .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .tag { font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+    .big { font-size: 1.8rem; font-weight: 700; color: #4ecca3; margin-top: 4px; }
+    .hier-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+    .hier-card { background: #0d0d0f; border: 1px solid #2a2a35; border-radius: 10px; padding: 14px; }
+    .cycle-card { border-color: #4a2a2a; }
+    .hier-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .badge { background: #3a1a1a; color: #f76a6a; font-size: 0.7rem; padding: 3px 8px; border-radius: 20px; }
+    .badge-green { background: #1a3a2a; color: #4ecca3; font-size: 0.7rem; padding: 3px 8px; border-radius: 20px; }
+    .tree-node { font-size: 0.85rem; margin-left: 16px; }
+    .node-label { cursor: pointer; user-select: none; }
+    .node-label:hover { color: #4ecca3; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .pill { display: inline-block; background: #2a1010; color: #f76a6a;
+            border-radius: 6px; padding: 3px 10px; margin: 3px; font-size: 0.82rem; }
+    .pill-orange { display: inline-block; background: #2a1e10; color: #f7a76a;
+                   border-radius: 6px; padding: 3px 10px; margin: 3px; font-size: 0.82rem; }
+    .none { color: #888; font-size: 0.85rem; }
+    .fade { animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+    @media(max-width:600px) { .grid3, .two-col { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<div class="main">
+  <h1>Node Hierarchy Explorer</h1>
+  <p class="subtitle">SRM Full Stack Challenge · POST /bfhl</p>
+
+  <div class="card">
+    <label>Enter node edges (comma-separated)</label>
+    <textarea id="input" rows="4">A->B, A->C, B->D, C->E, E->F, X->Y, Y->Z, Z->X, P->Q, Q->R, G->H, G->H, G->I, hello, 1->2, A-></textarea>
+    <button id="btn" onclick="submit()">▶ Submit</button>
+  </div>
+
+  <div id="error" style="display:none" class="error"></div>
+  <div id="results" style="display:none" class="fade"></div>
+</div>
+
+<script>
+  async function submit() {
+    const btn = document.getElementById('btn');
+    const errEl = document.getElementById('error');
+    const resEl = document.getElementById('results');
+    errEl.style.display = 'none';
+    resEl.style.display = 'none';
+    btn.disabled = true; btn.textContent = 'Processing…';
+
+    try {
+      const raw = document.getElementById('input').value;
+      const data = raw.split(',').map(s => s.trim()).filter(Boolean);
+      const res = await fetch('http://localhost:3000/bfhl', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data })
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const r = await res.json();
+      renderResults(r);
+    } catch(e) {
+      errEl.textContent = '⚠ API call failed: ' + e.message;
+      errEl.style.display = 'block';
+    } finally {
+      btn.disabled = false; btn.textContent = '▶ Submit';
+    }
+  }
+
+  function renderTree(node, subtree, depth = 0) {
+    const kids = Object.keys(subtree || {});
+    const div = document.createElement('div');
+    div.className = 'tree-node';
+    const label = document.createElement('span');
+    label.className = 'node-label';
+    label.textContent = (kids.length ? '▾ ' : '◦ ') + node;
+    div.appendChild(label);
+    const childContainer = document.createElement('div');
+    kids.forEach(k => childContainer.appendChild(renderTree(k, subtree[k], depth + 1)));
+    label.onclick = () => { childContainer.style.display = childContainer.style.display === 'none' ? '' : 'none'; };
+    div.appendChild(childContainer);
+    return div;
+  }
+
+  function renderResults(r) {
+    const el = document.getElementById('results');
+    el.innerHTML = `
+      <div class="card">
+        <div class="card-title">Identity</div>
+        <div class="grid3">
+          <div><div class="tag">User ID</div><div>${r.user_id}</div></div>
+          <div><div class="tag">Email</div><div>${r.email_id}</div></div>
+          <div><div class="tag">Roll No</div><div>${r.college_roll_number}</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Summary</div>
+        <div class="grid3">
+          <div><div class="tag">Trees</div><div class="big">${r.summary.total_trees}</div></div>
+          <div><div class="tag">Cycles</div><div class="big">${r.summary.total_cycles}</div></div>
+          <div><div class="tag">Largest Root</div><div class="big">${r.summary.largest_tree_root}</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Hierarchies</div>
+        <div class="hier-grid" id="hier"></div>
+      </div>
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title">Invalid Entries</div>
+          <div>${r.invalid_entries.length ? r.invalid_entries.map(e => `<code class="pill">${e||'""'}</code>`).join('') : '<p class="none">None</p>'}</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Duplicate Edges</div>
+          <div>${r.duplicate_edges.length ? r.duplicate_edges.map(e => `<code class="pill-orange">${e}</code>`).join('') : '<p class="none">None</p>'}</div>
+        </div>
+      </div>`;
+
+    const hierGrid = document.getElementById('hier');
+    r.hierarchies.forEach(h => {
+      const card = document.createElement('div');
+      card.className = 'hier-card' + (h.has_cycle ? ' cycle-card' : '');
+      card.innerHTML = `<div class="hier-header"><strong>Root: ${h.root}</strong>
+        ${h.has_cycle ? '<span class="badge">⟳ Cycle</span>' : `<span class="badge-green">Depth ${h.depth}</span>`}
+        </div>`;
+      if (h.has_cycle) {
+        const p = document.createElement('p');
+        p.style.cssText = 'color:#888;font-size:0.8rem;font-style:italic';
+        p.textContent = 'Cyclic group';
+        card.appendChild(p);
+      } else {
+        card.appendChild(renderTree(h.root, h.tree[h.root]));
+      }
+      hierGrid.appendChild(card);
+    });
+
+    el.style.display = 'block';
+  }
+</script>
+</body>
+</html>
